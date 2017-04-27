@@ -1,0 +1,765 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+
+
+/*
+	Author: Nicholas Edwards #3030212
+
+	Created: April 10, 2017
+
+	Description: This is a class for creating a fractal terrain based
+	on an initial mesh provided in code, or via the Unity Editor
+*/
+public class FractalTerrain : MonoBehaviour {
+
+	//Controls the number of fractal expansions done on subMeshSize
+	[Range(0, 10)]
+	[Header("Quadrouples # of Vertices")]
+	public int fractalExpansions = 4;
+
+	//The size of the first mesh to be fractally expanded as well as
+	//size of the subMeshes used
+	int subMeshSize = 128;
+
+	//The distance between individual vertices in the overall mesh.
+	//Increasing this will have an effect of stretching the mesh out
+	[Range(1, 100)]
+	public int vertexDistance = 1;
+
+	//Controls how much of a random factor is used to determine the fractal
+	//expansions
+	[Range(0.0f, 1.0f)]
+	public float randomizationFactor;
+
+	//The gameObject that will be instantiated to hold one submesh
+	//Should be an empty gameObject with a Mesh and MeshFilter attached
+	[Header("The Gameobject for the new Mesh")]
+	public GameObject meshObject;
+
+	//Stores the total number of sub meshes per side on the entire mesh
+	int subMeshesOnASide;
+
+	//Is the total number of vertices per side on the entire mesh
+	[Header("Calculated Automatically")]
+	public int size;
+
+	//This is a list of subMesh structs that holds all the info we will need about our submeshes
+	List<subMeshStruct> subMeshes;
+
+	//Contains all the relevent information about a submesh. Allows for easy reseting of vertices
+	struct subMeshStruct {
+		public Mesh subMesh;
+		public MeshCollider collider;
+		public int row; //the row of the submesh in the array of submeshes making up the main mesh
+		public int col; // the col " " " ...
+
+		public subMeshStruct(Mesh mesh, MeshCollider collide, int r, int c) {
+			subMesh = mesh;
+			collider = collide;
+			row = r;
+			col = c;
+		}
+	}
+
+	//Arrays to hold the entire data set of vertices, uvs, and triangles
+	Vector3[] vertices;
+	Vector2[] uvs;
+	int[] triangles;
+
+	//The heightest Point on the Mesh
+	public float maxPositiveHeight = 0;
+
+	//The lowest posint on the mesh
+	public float maxNegativeHeight = 0;
+
+
+	//The wave generator object to spawn for the ocean
+	[Header("The gameobject with Wave Gen")]
+	public GameObject water;
+
+	//The initial mesh to build the terrain based on. It must be a square
+	//mesh with a power of 2 number of vertices on a side, and it must be 128
+	//vertices on a side of less
+	[Header("Max size of square mesh = 128x128")]
+	public Mesh startingMesh = null;
+
+	//Should we create the ocean
+	public bool createOceanAtSeaLevel  = true;
+
+	//Should we set uvs based on height
+	public bool heightBasedUVs = true;
+
+	bool meshBuilt = false;
+
+	void Start() {
+		if (startingMesh != null && !meshBuilt) {
+			buildMesh();
+		}
+	}
+
+
+
+	/*
+	Desc: Builds the mesh based on the starting mesh and set parameters.
+		Also checks to ensure the starting mesh is correct.
+	*/
+	public void buildMesh() {
+
+		meshBuilt = true;
+
+		//If the startingMesh is null throw a null reference exception
+		if (startingMesh == null) {
+			throw new NullReferenceException("StartingMesh was not defined");
+		}
+
+		//find the size of the starting mesh on a side
+		int startingMeshSize = ((int)Mathf.Sqrt(startingMesh.vertices.Length));
+
+		//find the size of our submeshse
+		subMeshSize = Mathf.ClosestPowerOfTwo(startingMeshSize);
+
+		//if the submesh size is larger than the total size of the starting mesh
+		//divide by 2 to get the next smallest a power of 2
+		if (subMeshSize > startingMeshSize) subMeshSize /= 2;
+
+		//If the starting mesh was too small or too large throw an exception
+		if (subMeshSize <= 0 || subMeshSize > 128) {
+			throw new Exception("Starting Mesh must be a square mesh with maximum size of 128 x 128 and a minimum size of 2");
+		}
+
+		//initialize the entire mesh and all components (vertices, uvs, etc.)
+		initializeMesh();
+
+		//Sets up the initial mesh that will the baseline for the fractalling
+		initializeStartingMesh();
+
+		//Fractally Expands the mesh
+		fractalExpand();
+
+		//Sets our UVs to be based on height for us with our height based texture map
+		if (heightBasedUVs) SetHeightBasedUVs();
+
+		//Set the vertices back to the mesh to update them
+		rebuildMesh();
+
+		//Creates the wave generators that simulate ocean
+		if (createOceanAtSeaLevel) BuildOcean();
+
+		//moves the island to be centered at the origin
+		transform.Translate(-(size / 2) * vertexDistance, 0, -(size / 2) * vertexDistance);
+	}
+
+
+
+	/*
+	Desc: Initializes all the arrays for use by the mesh objects
+	Sets up the base values for all the arrays as well
+
+	parameters:
+
+	Returns:
+
+	Post:
+	subMeshes is initialized
+	vertices is initialized
+	uvs is initialized
+	triangles is initialized
+	*/
+	void initializeMesh() {
+		//Determines how many submeshes will be on a side 
+		subMeshesOnASide = 1;
+		for (int i = 0; i < fractalExpansions; i++) {
+			subMeshesOnASide *= 2;
+		}
+
+		//determines the total number of vertices per side
+		size = (subMeshesOnASide * subMeshSize) + 1;
+
+		//initializes the list of subMeshes
+		subMeshes = new List<subMeshStruct>(subMeshesOnASide * subMeshesOnASide);
+
+
+		//Sets the size of all the arrays we need
+		vertices = new Vector3[(size) * (size)];
+		uvs = new Vector2[vertices.Length];
+		triangles = new int[(size - 1) * (size - 1) * 6];
+
+		//sets the basic values for all Arrays
+		initializeVertAndUVs();
+		initializeTris();
+
+		//Sets up all the submeshes
+		initializeSubMeshes();
+	}
+
+	/*
+	Desc: Sets the vertec x,z coords and sets a basic UV value, overridden later
+
+	parameters:
+
+
+	Returns:
+
+	Pre: 
+	vertices is initialized
+	uvs is initialized
+	size != 0
+
+	*/
+	void initializeVertAndUVs() {
+		float UVFactor = 1.0f / size; //The UV factor in relation to size
+
+		for (int row = 0; row < size; row++) {
+			for (int col = 0; col < size; col++) {
+				vertices[(row * size) + col] = new Vector3(row * vertexDistance, 0, col * vertexDistance);
+				uvs[(row * size) + col] = new Vector2(col * UVFactor, row * UVFactor);
+			}
+		}
+	}
+
+	/*
+	Desc: Sets up the triangle indexs for Unity. 
+
+	parameters:
+
+
+	Returns:
+
+	Pre:
+	triangles is initialized
+
+	*/
+	void initializeTris() {
+		int triPosition = 0;
+
+		for (int row = 0; row < size - 1; row++) {
+			for (int col = 0; col < size - 1; col++) {
+				int lowerLeft = (row * size) + col;
+				int upperLeft = lowerLeft + size;
+				triangles[triPosition++] = lowerLeft;
+				triangles[triPosition++] = upperLeft;
+				triangles[triPosition++] = lowerLeft + 1;
+				triangles[triPosition++] = lowerLeft + 1;
+				triangles[triPosition++] = upperLeft;
+				triangles[triPosition++] = upperLeft + 1;
+			}
+		}
+	}
+
+	/*
+	Desc: Creates and applies arrays to all the subMeshes.
+	Also add as relevant data to the subMeshStructs list
+
+	parameters:
+
+
+	Returns:
+
+	Pre: 
+	this gameobject has a MeshFilter component
+	this gameObject has a MeshCollider component
+	subMeshes is initialized
+
+	Post:
+	MeshFilter has mesh assigned
+	MeshCollider has mesh assigned
+
+	*/
+	void initializeSubMeshes() {
+		//foreach subMesh
+		for (int row = 0; row < subMeshesOnASide; row++) {
+			for (int col = 0; col < subMeshesOnASide; col++) {
+
+				//Create the subMesh attached to this object
+				GameObject currentObj = Instantiate(meshObject, Vector3.zero, transform.rotation, transform);
+
+				//Get the mesh Filter
+				MeshFilter filter = currentObj.GetComponent<MeshFilter>();
+
+				//Create a Mesh
+				Mesh subMesh = new Mesh();
+
+				//Mark the mesh as dynamic to improve loading times
+				subMesh.MarkDynamic();
+
+				//Set the subMesh vertices,uvs, and triangles from the main array
+				setSubMeshArrays(subMesh, row, col);
+
+				//Set the mesh to the filter
+				filter.mesh = subMesh;
+
+				//setup the mesh colider
+				MeshCollider collider = currentObj.GetComponent<MeshCollider>();
+				collider.sharedMesh = subMesh;
+
+				//Add all relevent data to the subMeshStruct List
+				subMeshes.Add(new subMeshStruct(subMesh, collider, row, col));
+			}
+		}
+	}
+
+	/*
+	Desc: Sets the correct vertices, uvs, and triangles to the submesh
+
+	parameters:
+	Mesh mesh: The mesh to initialize
+	int subMeshRow: The row of the subMesh
+	int subMeshCol: The column of the subMesh
+
+
+	Returns:
+
+	Pre: 
+	Mesh is initialized
+	0 < subMeshRow < subMeshesOnASide
+	0 < subMeshCol < subMeshesOnASide
+
+	mesh has values assigned to arrays
+
+	*/
+	void setSubMeshArrays(Mesh mesh, int subMeshRow, int subMeshCol) {
+		//Set the size of the subMesh
+		int rows = subMeshSize + 1;
+		int cols = subMeshSize + 1;
+
+		//Find the very bottom left most vertex 
+		int bottomLeftSubMeshVertex = (subMeshRow * size * subMeshSize) + (subMeshCol * subMeshSize);
+
+		//Create new arrays
+		Vector3[] vertArray = new Vector3[rows * cols];
+		Vector2[] uvArray = new Vector2[rows * cols];
+
+		//Set the vertices from the main arrays to the correct subMesh locations
+		int pos = 0;
+		for (int i = 0; i < rows; i++) {
+			for (int j = 0; j < cols; j++) {
+				vertArray[pos] = vertices[bottomLeftSubMeshVertex + (i * size) + j];
+				uvArray[pos++] = uvs[bottomLeftSubMeshVertex + (i * size) + j];
+
+			}
+		}
+
+
+		//Find the correct triangles for the subMesh
+		int[] trisArray = new int[subMeshSize * subMeshSize * 6];
+		pos = 0;
+
+		for (int i = 0; i < subMeshSize; i++) {
+			for (int j = 0; j < subMeshSize; j++) {
+				trisArray[pos++] = (i * (cols)) + j + 1;
+				trisArray[pos++] = ((i + 1) * (cols)) + j;
+				trisArray[pos++] = (i * (cols)) + j;
+
+				trisArray[pos++] = ((i + 1) * (cols)) + j + 1;
+				trisArray[pos++] = ((i + 1) * (cols)) + j;
+				trisArray[pos++] = (i * (cols)) + j + 1;
+			}
+		}
+
+
+		//Sets the arrays to the Mesh and lets Unity calculate normals
+		mesh.vertices = vertArray;
+		mesh.uv = uvArray;
+		mesh.RecalculateNormals();
+		mesh.triangles = trisArray;
+	}
+
+	/*
+	Desc: Sets up the first mesh to do the fractal expansion on by copying
+		over the height values from the starting mesh. x, z coords are 
+		based on vertex distance set above not on starting mesh
+
+	parameters:
+
+	Returns:
+
+	Pre: 
+	vertices is initialized on startingMesh
+
+	*/
+	void initializeStartingMesh() {
+		for (int i = 0; i < subMeshSize; i++) {
+			for (int j = 0; j < subMeshSize; j++) {
+				vertices[(i * size) + j].y = Mathf.Pow(2f, fractalExpansions) * startingMesh.vertices[(i * subMeshSize) + j].y;
+			}
+		}
+	}
+
+	/*
+	Desc: Does the fractal expansion up the number of requested times
+
+	parameters:
+
+	Returns:
+
+	Pre:
+	vertices in initialized
+
+	*/
+	void fractalExpand() {
+
+		for (int i = 1; i <= fractalExpansions; i++) {
+
+			//Find the sizes of the current SubMesh and the new Mesh to expand into
+			int newMeshSize = ((int)Mathf.Pow(2, i) * subMeshSize) + 1;
+			int currentSubMeshSize = ((int)Mathf.Pow(2, i - 1) * subMeshSize) + 1;
+
+			//Create an array to hold the new vertices we will generate
+			Vector3[] newVertices = new Vector3[newMeshSize * newMeshSize];
+
+			//Move the vertices from the current mesh to the new mesh at 
+			//twice the index
+			for (int row = 0; row < currentSubMeshSize; row++) {
+				for (int col = 0; col < currentSubMeshSize; col++) {
+					newVertices[((row * newMeshSize) * 2) + (col * 2)].y = vertices[(row * size) + col].y;
+				}
+			}
+
+
+			//clears the heights of the Vertices in the new sub mesh 
+			for (int row = 0; row < newMeshSize; row++) {
+				for (int col = 0; col < newMeshSize; col++) {
+					vertices[(row * size) + col].y = 0;
+				}
+			}
+
+			//Moves the heights from the new sub mesh back into the main mesh
+			for (int row = 0; row < newMeshSize; row++) {
+				for (int col = 0; col < newMeshSize; col++) {
+					vertices[(row * size) + col].y = newVertices[(row * newMeshSize) + col].y;
+				}
+			}
+
+			//Computes the y values for the new vertices on the diagonals
+			for (int row = 1; row < newMeshSize; row += 2) {
+				for (int col = 1; col < newMeshSize; col += 2) {
+					vertices[(row * size) + col].y = calculateDiagonalValue(row, col);
+				}
+			}
+
+			//Computes the y values for the new vertices on the cardinals
+			for (int row = 0; row < newMeshSize; row++) {
+				if (row % 2 == 0) {
+					for (int col = 1; col < newMeshSize - 1; col += 2) {
+						vertices[(row * size) + col].y = calculateCardinalValue(row, col, newMeshSize);
+					}
+				}
+				else {
+					for (int col = 0; col < newMeshSize; col += 2) {
+						vertices[(row * size) + col].y = calculateCardinalValue(row, col, newMeshSize);
+					}
+				}
+			}
+		}
+	}
+
+	/*
+	Desc: Sets the UV values based on their percentage of the heightFactor
+
+	parameters:
+
+
+	Returns:
+
+	Pre: 
+	uvs is initialized;
+	heightFactor != 0
+
+	*/
+	void SetHeightBasedUVs() {
+		foreach (Vector3 vert in vertices) {
+			if (vert.y < 0) {
+				if (vert.y < maxNegativeHeight) maxNegativeHeight = vert.y;
+			}
+			else {
+				if (vert.y > maxPositiveHeight) maxPositiveHeight = vert.y;
+			}
+		}
+
+		float uv;
+		for (int i = 0; i < size * size; i++) {
+			if (vertices[i].y >= 0) {
+				uv = Mathf.Lerp(0.5f, 1f, vertices[i].y / maxPositiveHeight);
+			}
+			else {
+				uv = Mathf.Lerp(0.5f, 0f, vertices[i].y / maxNegativeHeight);
+			}
+			uvs[i] = new Vector2(uv, uv);
+		}
+	}
+
+	/*
+	Desc: Reassigned the arrays to the subMeshes so Unity will redraw them
+
+	parameters:
+
+
+	Returns:
+
+	Pre:
+	All subMeshStructs in the List are initialized with non-null values
+
+	*/
+	void rebuildMesh() {
+		foreach (subMeshStruct subMesh in subMeshes) {
+			subMesh.subMesh.Clear();
+			setSubMeshArrays(subMesh.subMesh, subMesh.row, subMesh.col);
+			subMesh.subMesh.RecalculateBounds();
+			subMesh.subMesh.RecalculateNormals();
+			subMesh.collider.sharedMesh = subMesh.subMesh;
+		}
+	}
+
+	/*
+	Desc: Creates all the wave generators the simulate an ocean
+
+	parameters:
+
+
+	Returns:
+
+	Pre:
+	water is initialized
+	water objects have a WaveGenerator Component
+
+	*/
+	void BuildOcean() {
+
+		//Find the wave generator vertex distance based on the number of expansions
+		int vertDist = (int)Mathf.Pow(2, fractalExpansions + 1);
+
+		//Create a new wave generator at the origin with a rotation
+		GameObject waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.identity, transform);
+		WaveGenerator wave = waterObj.GetComponent<WaveGenerator>();
+
+		//Set the wave generator's values
+		wave.size = subMeshSize + 1;
+		wave.vertexDistance = vertDist;
+
+
+		waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.Euler(0, 90f, 0), transform);
+		wave = waterObj.GetComponent<WaveGenerator>();
+		wave.size = subMeshSize + 1;
+		wave.vertexDistance = vertDist;
+
+		waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.Euler(0, 180f, 0), transform);
+		wave = waterObj.GetComponent<WaveGenerator>();
+		wave.size = subMeshSize + 1;
+		wave.vertexDistance = vertDist;
+
+		waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.Euler(0, -90f, 0), transform);
+		wave = waterObj.GetComponent<WaveGenerator>();
+		wave.size = subMeshSize + 1;
+		wave.vertexDistance = vertDist;
+
+	}
+
+	/*
+	Desc: Find the average of the vertices around the given on 
+	on diagonals. Then find the max deviation and adds it to the
+	average height based on a randomization factor
+
+	parameters:
+	int row: The row of the vertex to find the average of 
+	int col: The column of the vertex to find the average of
+
+	Returns:
+	float: The new height value to be used.
+	*/
+	float calculateDiagonalValue(int row, int col) {
+		//Get all the neighbors values
+		float nwNeighbor = vertices[((row + 1) * size) + col - 1].y;
+		float neNeighbor = vertices[((row + 1) * size) + col + 1].y;
+		float seNeighbor = vertices[((row - 1) * size) + col + 1].y;
+		float swNeighbor = vertices[((row - 1) * size) + col - 1].y;
+
+		//Average them
+		float average = (nwNeighbor + neNeighbor + seNeighbor + swNeighbor) / 4;
+
+		//Find the max deviation
+		float maxDeviation = 0;
+		if (Mathf.Abs(average - nwNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - nwNeighbor);
+		if (Mathf.Abs(average - neNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - neNeighbor);
+		if (Mathf.Abs(average - swNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - swNeighbor);
+		if (Mathf.Abs(average - seNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - seNeighbor);
+
+		//Add the randomization fact
+		float deviation = maxDeviation * randomizationFactor;
+
+		return (average + UnityEngine.Random.Range(-deviation, deviation));
+
+
+	}
+
+	/*
+	Desc: Find the average of the vertices around the given on 
+	on cardinals. Then find the max deviation and adds it to the
+	average height based on a randomization factor
+
+	parameters:
+	int row: The row of the vertex to find the average of 
+	int col: The column of the vertex to find the average of
+
+	Returns:
+	float: The new height value to be used.
+
+	Pre:
+	0 < row < max
+	0 < col < max
+	size > 1
+
+	*/
+	float calculateCardinalValue(int row, int col, int max) {
+		float nNeighbor;
+		float sNeighbor;
+		float eNeighbor;
+		float wNeighbor;
+
+		//The number of values in the average, reduced if there are out
+		// of bounds points
+		int values = 4;
+
+		//The following block checks for out of bounds points and set the values
+		//to either zero or the height
+
+		if (row + 1 >= max) {
+			values--;
+			nNeighbor = 0;
+		}
+		else nNeighbor = vertices[((row + 1) * size) + col].y;
+
+		if (row - 1 < 0) {
+			values--;
+			sNeighbor = 0;
+		}
+		else sNeighbor = vertices[((row - 1) * size) + col].y;
+
+		if (col + 1 >= max) {
+			values--;
+			eNeighbor = 0;
+		}
+		else eNeighbor = vertices[((row * size)) + col + 1].y;
+
+		if (col - 1 < 0) {
+			values--;
+			wNeighbor = 0;
+		}
+		else wNeighbor = vertices[(row * size) + col - 1].y;
+
+
+		//Finds the average
+		float average = (nNeighbor + sNeighbor + eNeighbor + wNeighbor) / values;
+
+
+		//Find the maximum deviation for points in bounds
+		float maxDeviation = 0;
+		if (row + 1 < max) {
+			if (Mathf.Abs(average - nNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - nNeighbor);
+		}
+		if (row - 1 >= 0) {
+			if (Mathf.Abs(average - sNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - sNeighbor);
+		}
+		if (col + 1 < max) {
+			if (Mathf.Abs(average - eNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - eNeighbor);
+		}
+		if (col - 1 >= 0) {
+			if (Mathf.Abs(average - wNeighbor) > maxDeviation) maxDeviation = Mathf.Abs(average - wNeighbor);
+		}
+
+		//Calculates the deviation with a random element
+		float deviation = maxDeviation * randomizationFactor;
+
+		return average + UnityEngine.Random.Range(-deviation, deviation);
+	}
+
+	/*
+	Desc: Prints out the various arrays for debugging
+	DO NOT USE WITH MORE THAN 64 x 64
+
+	parameters:
+
+	Returns:
+
+	*/
+	void debug() {
+		Debug.Log("Begin Debug Vertices");
+		printVertices();
+		Debug.Log("Begin Debug UVs");
+		printUVs();
+		Debug.Log("Begin Debug Tris");
+		printTris();
+	}
+
+
+	/*
+	Desc: Prints our the vertex array
+
+	parameters:
+
+
+	Returns:
+
+	*/
+	void printVertices() {
+		string line;
+		for (int row = 0; row < size; row++) {
+			line = "";
+			for (int col = 0; col < size; col++) {
+				line += "[" + ((row * size) + col) + "]" + vertices[(row * size) + col] + ", ";
+			}
+			Debug.Log(line);
+		}
+	}
+
+
+	/*
+	Desc: Prints out the UV array
+
+	parameters:
+
+
+	Returns:
+
+	*/
+	void printUVs() {
+		string line;
+		for (int row = 0; row < size; row++) {
+			line = "";
+			for (int col = 0; col < size; col++) {
+				line += uvs[(row * size) + col] + ", ";
+			}
+			Debug.Log(line);
+		}
+	}
+
+
+	/*
+	Desc: Prints out the triangles array
+
+	parameters:
+
+
+	Returns:
+
+	*/
+	void printTris() {
+		string line;
+		for (int row = 0; row < size - 1; row++) {
+			line = "";
+			for (int col = 0; col < size - 1; col++) {
+				line += "(";
+				for (int i = 0; i < 3; i++) {
+					line += triangles[(row * (size - 1) * 6) + (col * 6) + i] + ", ";
+				}
+				line += ")(";
+				for (int i = 3; i < 6; i++) {
+					line += triangles[(row * (size - 1) * 6) + (col * 6) + i] + ", ";
+				}
+				line += "), ";
+			}
+			Debug.Log(line);
+		}
+	}
+}
