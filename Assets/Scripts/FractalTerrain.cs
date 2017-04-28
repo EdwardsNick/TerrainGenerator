@@ -14,39 +14,7 @@ using UnityEngine;
 */
 public class FractalTerrain : MonoBehaviour {
 
-	//Controls the number of fractal expansions done on subMeshSize
-	[Range(0, 10)]
-	[Header("Quadrouples # of Vertices")]
-	public int fractalExpansions = 4;
-
-	//The size of the first mesh to be fractally expanded as well as
-	//size of the subMeshes used
-	int subMeshSize = 128;
-
-	//The distance between individual vertices in the overall mesh.
-	//Increasing this will have an effect of stretching the mesh out
-	[Range(1, 100)]
-	public int vertexDistance = 1;
-
-	//Controls how much of a random factor is used to determine the fractal
-	//expansions
-	[Range(0.0f, 1.0f)]
-	public float randomizationFactor;
-
-	//The gameObject that will be instantiated to hold one submesh
-	//Should be an empty gameObject with a Mesh and MeshFilter attached
-	[Header("The Gameobject for the new Mesh")]
-	public GameObject meshObject;
-
-	//Stores the total number of sub meshes per side on the entire mesh
-	int subMeshesOnASide;
-
-	//Is the total number of vertices per side on the entire mesh
-	[Header("Calculated Automatically")]
-	public int size;
-
-	//This is a list of subMesh structs that holds all the info we will need about our submeshes
-	List<subMeshStruct> subMeshes;
+	//////////// Structures ////////////
 
 	//Contains all the relevent information about a submesh. Allows for easy reseting of vertices
 	struct subMeshStruct {
@@ -63,21 +31,40 @@ public class FractalTerrain : MonoBehaviour {
 		}
 	}
 
-	//Arrays to hold the entire data set of vertices, uvs, and triangles
-	Vector3[] vertices;
-	Vector2[] uvs;
-	int[] triangles;
 
-	//The heightest Point on the Mesh
-	public float maxPositiveHeight = 0;
+	////////// Public Variables ///////////
 
-	//The lowest posint on the mesh
-	public float maxNegativeHeight = 0;
+	//Controls the number of fractal expansions done on subMeshSize
+	[Range(0, 10)]
+	[Header("Quadrouples # of Vertices")]
+	public int fractalExpansions = 4;
 
+	//The distance between individual vertices in the overall mesh.
+	//Increasing this will have an effect of stretching the mesh out
+	[Range(1, 100)]
+	[Header("Distance between Vertices")]
+	public int vertexDistance = 1;
+
+	//Controls how much of a random factor is used to determine the fractal
+	//expansions
+	[Range(0.0f, 1.0f)]
+	[Header("Amount of Random deviation for Heights")]
+	public float randomizationFactor;
+
+	//The gameObject that will be instantiated to hold one submesh
+	//Should be an empty gameObject with a Mesh and MeshFilter attached
+	[Header("The Gameobject for the new Mesh")]
+	public GameObject meshObject;
 
 	//The wave generator object to spawn for the ocean
 	[Header("The gameobject with Wave Gen")]
 	public GameObject water;
+
+	//Should we create the ocean
+	public bool createOcean  = true;
+
+	//Should we set uvs based on height
+	public bool heightBasedUvs = true;
 
 	//The initial mesh to build the terrain based on. It must be a square
 	//mesh with a power of 2 number of vertices on a side, and it must be 128
@@ -85,17 +72,75 @@ public class FractalTerrain : MonoBehaviour {
 	[Header("Max size of square mesh = 128x128")]
 	public Mesh startingMesh = null;
 
-	//Should we create the ocean
-	public bool createOceanAtSeaLevel  = true;
 
-	//Should we set uvs based on height
-	public bool heightBasedUVs = true;
 
+	////////// Private Variables ///////////
+
+	//Arrays to hold the entire data set of vertices, uvs, and triangles
+	Vector3[] vertices;
+	Vector2[] uvs;
+	int[] triangles;
+
+	//Is the total number of vertices per side on the entire mesh
+	[Header("Calculated Automatically")]
+	int size;
+
+	//The heightest Point on the Mesh
+	float maxPositiveHeight = 0;
+
+	//The lowest posint on the mesh
+	float maxNegativeHeight = 0;
+
+	//Ensures we don't accidentally build a mesh twice
 	bool meshBuilt = false;
+
+	//This is a list of subMesh structs that holds all the info we will need about our submeshes
+	List<subMeshStruct> subMeshes;
+
+	//The size of the first mesh to be fractally expanded as well as
+	//size of the subMeshes used
+	int subMeshSize = 128;
+
+
+	//Stores the total number of sub meshes per side on the entire mesh
+	int subMeshesOnASide;
+
+	public int Size {
+		get {
+			return size;
+		}
+
+		set {
+			size = value;
+		}
+	}
+
+	public float MaxPositiveHeight {
+		get {
+			return maxPositiveHeight;
+		}
+
+		set {
+			maxPositiveHeight = value;
+		}
+	}
+
+	public float MaxNegativeHeight {
+		get {
+			return maxNegativeHeight;
+		}
+
+		set {
+			maxNegativeHeight = value;
+		}
+	}
+
+
+	/////////// Functions and Methods ////////////
 
 	void Start() {
 		if (startingMesh != null && !meshBuilt) {
-			buildMesh();
+			BuildMesh();
 		}
 	}
 
@@ -105,7 +150,7 @@ public class FractalTerrain : MonoBehaviour {
 	Desc: Builds the mesh based on the starting mesh and set parameters.
 		Also checks to ensure the starting mesh is correct.
 	*/
-	public void buildMesh() {
+	public void BuildMesh() {
 
 		meshBuilt = true;
 
@@ -130,25 +175,25 @@ public class FractalTerrain : MonoBehaviour {
 		}
 
 		//initialize the entire mesh and all components (vertices, uvs, etc.)
-		initializeMesh();
+		InitializeMesh();
 
 		//Sets up the initial mesh that will the baseline for the fractalling
-		initializeStartingMesh();
+		InitializeStartingMesh();
 
 		//Fractally Expands the mesh
-		fractalExpand();
+		FractalExpand();
 
 		//Sets our UVs to be based on height for us with our height based texture map
-		if (heightBasedUVs) SetHeightBasedUVs();
+		if (heightBasedUvs) SetHeightBasedUVs();
 
 		//Set the vertices back to the mesh to update them
-		rebuildMesh();
+		RebuildMesh();
 
 		//Creates the wave generators that simulate ocean
-		if (createOceanAtSeaLevel) BuildOcean();
+		if (createOcean) BuildOcean();
 
 		//moves the island to be centered at the origin
-		transform.Translate(-(size / 2) * vertexDistance, 0, -(size / 2) * vertexDistance);
+		transform.Translate(-(Size / 2) * vertexDistance, 0, -(Size / 2) * vertexDistance);
 	}
 
 
@@ -167,7 +212,7 @@ public class FractalTerrain : MonoBehaviour {
 	uvs is initialized
 	triangles is initialized
 	*/
-	void initializeMesh() {
+	void InitializeMesh() {
 		//Determines how many submeshes will be on a side 
 		subMeshesOnASide = 1;
 		for (int i = 0; i < fractalExpansions; i++) {
@@ -175,23 +220,23 @@ public class FractalTerrain : MonoBehaviour {
 		}
 
 		//determines the total number of vertices per side
-		size = (subMeshesOnASide * subMeshSize) + 1;
+		Size = (subMeshesOnASide * subMeshSize) + 1;
 
 		//initializes the list of subMeshes
 		subMeshes = new List<subMeshStruct>(subMeshesOnASide * subMeshesOnASide);
 
 
 		//Sets the size of all the arrays we need
-		vertices = new Vector3[(size) * (size)];
+		vertices = new Vector3[(Size) * (Size)];
 		uvs = new Vector2[vertices.Length];
-		triangles = new int[(size - 1) * (size - 1) * 6];
+		triangles = new int[(Size - 1) * (Size - 1) * 6];
 
 		//sets the basic values for all Arrays
-		initializeVertAndUVs();
-		initializeTris();
+		InitializeVertAndUVs();
+		InitializeTris();
 
 		//Sets up all the submeshes
-		initializeSubMeshes();
+		InitializeSubMeshes();
 	}
 
 	/*
@@ -208,13 +253,13 @@ public class FractalTerrain : MonoBehaviour {
 	size != 0
 
 	*/
-	void initializeVertAndUVs() {
-		float UVFactor = 1.0f / size; //The UV factor in relation to size
+	void InitializeVertAndUVs() {
+		float UVFactor = 1.0f / Size; //The UV factor in relation to size
 
-		for (int row = 0; row < size; row++) {
-			for (int col = 0; col < size; col++) {
-				vertices[(row * size) + col] = new Vector3(row * vertexDistance, 0, col * vertexDistance);
-				uvs[(row * size) + col] = new Vector2(col * UVFactor, row * UVFactor);
+		for (int row = 0; row < Size; row++) {
+			for (int col = 0; col < Size; col++) {
+				vertices[(row * Size) + col] = new Vector3(row * vertexDistance, 0, col * vertexDistance);
+				uvs[(row * Size) + col] = new Vector2(col * UVFactor, row * UVFactor);
 			}
 		}
 	}
@@ -231,13 +276,13 @@ public class FractalTerrain : MonoBehaviour {
 	triangles is initialized
 
 	*/
-	void initializeTris() {
+	void InitializeTris() {
 		int triPosition = 0;
 
-		for (int row = 0; row < size - 1; row++) {
-			for (int col = 0; col < size - 1; col++) {
-				int lowerLeft = (row * size) + col;
-				int upperLeft = lowerLeft + size;
+		for (int row = 0; row < Size - 1; row++) {
+			for (int col = 0; col < Size - 1; col++) {
+				int lowerLeft = (row * Size) + col;
+				int upperLeft = lowerLeft + Size;
 				triangles[triPosition++] = lowerLeft;
 				triangles[triPosition++] = upperLeft;
 				triangles[triPosition++] = lowerLeft + 1;
@@ -267,7 +312,7 @@ public class FractalTerrain : MonoBehaviour {
 	MeshCollider has mesh assigned
 
 	*/
-	void initializeSubMeshes() {
+	void InitializeSubMeshes() {
 		//foreach subMesh
 		for (int row = 0; row < subMeshesOnASide; row++) {
 			for (int col = 0; col < subMeshesOnASide; col++) {
@@ -285,7 +330,7 @@ public class FractalTerrain : MonoBehaviour {
 				subMesh.MarkDynamic();
 
 				//Set the subMesh vertices,uvs, and triangles from the main array
-				setSubMeshArrays(subMesh, row, col);
+				SetSubMeshArrays(subMesh, row, col);
 
 				//Set the mesh to the filter
 				filter.mesh = subMesh;
@@ -319,13 +364,13 @@ public class FractalTerrain : MonoBehaviour {
 	mesh has values assigned to arrays
 
 	*/
-	void setSubMeshArrays(Mesh mesh, int subMeshRow, int subMeshCol) {
+	void SetSubMeshArrays(Mesh mesh, int subMeshRow, int subMeshCol) {
 		//Set the size of the subMesh
 		int rows = subMeshSize + 1;
 		int cols = subMeshSize + 1;
 
 		//Find the very bottom left most vertex 
-		int bottomLeftSubMeshVertex = (subMeshRow * size * subMeshSize) + (subMeshCol * subMeshSize);
+		int bottomLeftSubMeshVertex = (subMeshRow * Size * subMeshSize) + (subMeshCol * subMeshSize);
 
 		//Create new arrays
 		Vector3[] vertArray = new Vector3[rows * cols];
@@ -335,8 +380,8 @@ public class FractalTerrain : MonoBehaviour {
 		int pos = 0;
 		for (int i = 0; i < rows; i++) {
 			for (int j = 0; j < cols; j++) {
-				vertArray[pos] = vertices[bottomLeftSubMeshVertex + (i * size) + j];
-				uvArray[pos++] = uvs[bottomLeftSubMeshVertex + (i * size) + j];
+				vertArray[pos] = vertices[bottomLeftSubMeshVertex + (i * Size) + j];
+				uvArray[pos++] = uvs[bottomLeftSubMeshVertex + (i * Size) + j];
 
 			}
 		}
@@ -379,10 +424,10 @@ public class FractalTerrain : MonoBehaviour {
 	vertices is initialized on startingMesh
 
 	*/
-	void initializeStartingMesh() {
+	void InitializeStartingMesh() {
 		for (int i = 0; i < subMeshSize; i++) {
 			for (int j = 0; j < subMeshSize; j++) {
-				vertices[(i * size) + j].y = Mathf.Pow(2f, fractalExpansions) * startingMesh.vertices[(i * subMeshSize) + j].y;
+				vertices[(i * Size) + j].y = Mathf.Pow(2f, fractalExpansions) * startingMesh.vertices[(i * subMeshSize) + j].y;
 			}
 		}
 	}
@@ -398,7 +443,7 @@ public class FractalTerrain : MonoBehaviour {
 	vertices in initialized
 
 	*/
-	void fractalExpand() {
+	void FractalExpand() {
 
 		for (int i = 1; i <= fractalExpansions; i++) {
 
@@ -413,7 +458,7 @@ public class FractalTerrain : MonoBehaviour {
 			//twice the index
 			for (int row = 0; row < currentSubMeshSize; row++) {
 				for (int col = 0; col < currentSubMeshSize; col++) {
-					newVertices[((row * newMeshSize) * 2) + (col * 2)].y = vertices[(row * size) + col].y;
+					newVertices[((row * newMeshSize) * 2) + (col * 2)].y = vertices[(row * Size) + col].y;
 				}
 			}
 
@@ -421,21 +466,21 @@ public class FractalTerrain : MonoBehaviour {
 			//clears the heights of the Vertices in the new sub mesh 
 			for (int row = 0; row < newMeshSize; row++) {
 				for (int col = 0; col < newMeshSize; col++) {
-					vertices[(row * size) + col].y = 0;
+					vertices[(row * Size) + col].y = 0;
 				}
 			}
 
 			//Moves the heights from the new sub mesh back into the main mesh
 			for (int row = 0; row < newMeshSize; row++) {
 				for (int col = 0; col < newMeshSize; col++) {
-					vertices[(row * size) + col].y = newVertices[(row * newMeshSize) + col].y;
+					vertices[(row * Size) + col].y = newVertices[(row * newMeshSize) + col].y;
 				}
 			}
 
 			//Computes the y values for the new vertices on the diagonals
 			for (int row = 1; row < newMeshSize; row += 2) {
 				for (int col = 1; col < newMeshSize; col += 2) {
-					vertices[(row * size) + col].y = calculateDiagonalValue(row, col);
+					vertices[(row * Size) + col].y = CalculateDiagonalValue(row, col);
 				}
 			}
 
@@ -443,12 +488,12 @@ public class FractalTerrain : MonoBehaviour {
 			for (int row = 0; row < newMeshSize; row++) {
 				if (row % 2 == 0) {
 					for (int col = 1; col < newMeshSize - 1; col += 2) {
-						vertices[(row * size) + col].y = calculateCardinalValue(row, col, newMeshSize);
+						vertices[(row * Size) + col].y = CalculateCardinalValue(row, col, newMeshSize);
 					}
 				}
 				else {
 					for (int col = 0; col < newMeshSize; col += 2) {
-						vertices[(row * size) + col].y = calculateCardinalValue(row, col, newMeshSize);
+						vertices[(row * Size) + col].y = CalculateCardinalValue(row, col, newMeshSize);
 					}
 				}
 			}
@@ -471,20 +516,20 @@ public class FractalTerrain : MonoBehaviour {
 	void SetHeightBasedUVs() {
 		foreach (Vector3 vert in vertices) {
 			if (vert.y < 0) {
-				if (vert.y < maxNegativeHeight) maxNegativeHeight = vert.y;
+				if (vert.y < MaxNegativeHeight) MaxNegativeHeight = vert.y;
 			}
 			else {
-				if (vert.y > maxPositiveHeight) maxPositiveHeight = vert.y;
+				if (vert.y > MaxPositiveHeight) MaxPositiveHeight = vert.y;
 			}
 		}
 
 		float uv;
-		for (int i = 0; i < size * size; i++) {
+		for (int i = 0; i < Size * Size; i++) {
 			if (vertices[i].y >= 0) {
-				uv = Mathf.Lerp(0.5f, 1f, vertices[i].y / maxPositiveHeight);
+				uv = Mathf.Lerp(0.5f, 1f, vertices[i].y / MaxPositiveHeight);
 			}
 			else {
-				uv = Mathf.Lerp(0.5f, 0f, vertices[i].y / maxNegativeHeight);
+				uv = Mathf.Lerp(0.5f, 0f, vertices[i].y / MaxNegativeHeight);
 			}
 			uvs[i] = new Vector2(uv, uv);
 		}
@@ -502,10 +547,10 @@ public class FractalTerrain : MonoBehaviour {
 	All subMeshStructs in the List are initialized with non-null values
 
 	*/
-	void rebuildMesh() {
+	void RebuildMesh() {
 		foreach (subMeshStruct subMesh in subMeshes) {
 			subMesh.subMesh.Clear();
-			setSubMeshArrays(subMesh.subMesh, subMesh.row, subMesh.col);
+			SetSubMeshArrays(subMesh.subMesh, subMesh.row, subMesh.col);
 			subMesh.subMesh.RecalculateBounds();
 			subMesh.subMesh.RecalculateNormals();
 			subMesh.collider.sharedMesh = subMesh.subMesh;
@@ -531,7 +576,7 @@ public class FractalTerrain : MonoBehaviour {
 		int vertDist = (int)Mathf.Pow(2, fractalExpansions + 1);
 
 		//Create a new wave generator at the origin with a rotation
-		GameObject waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.identity, transform);
+		GameObject waterObj = Instantiate(water, new Vector3(Size / 2f, 0.5f, Size / 2f), Quaternion.identity, transform);
 		WaveGenerator wave = waterObj.GetComponent<WaveGenerator>();
 
 		//Set the wave generator's values
@@ -539,17 +584,17 @@ public class FractalTerrain : MonoBehaviour {
 		wave.vertexDistance = vertDist;
 
 
-		waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.Euler(0, 90f, 0), transform);
+		waterObj = Instantiate(water, new Vector3(Size / 2f, 0.5f, Size / 2f), Quaternion.Euler(0, 90f, 0), transform);
 		wave = waterObj.GetComponent<WaveGenerator>();
 		wave.size = subMeshSize + 1;
 		wave.vertexDistance = vertDist;
 
-		waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.Euler(0, 180f, 0), transform);
+		waterObj = Instantiate(water, new Vector3(Size / 2f, 0.5f, Size / 2f), Quaternion.Euler(0, 180f, 0), transform);
 		wave = waterObj.GetComponent<WaveGenerator>();
 		wave.size = subMeshSize + 1;
 		wave.vertexDistance = vertDist;
 
-		waterObj = Instantiate(water, new Vector3(size / 2f, 0.5f, size / 2f), Quaternion.Euler(0, -90f, 0), transform);
+		waterObj = Instantiate(water, new Vector3(Size / 2f, 0.5f, Size / 2f), Quaternion.Euler(0, -90f, 0), transform);
 		wave = waterObj.GetComponent<WaveGenerator>();
 		wave.size = subMeshSize + 1;
 		wave.vertexDistance = vertDist;
@@ -568,12 +613,12 @@ public class FractalTerrain : MonoBehaviour {
 	Returns:
 	float: The new height value to be used.
 	*/
-	float calculateDiagonalValue(int row, int col) {
+	float CalculateDiagonalValue(int row, int col) {
 		//Get all the neighbors values
-		float nwNeighbor = vertices[((row + 1) * size) + col - 1].y;
-		float neNeighbor = vertices[((row + 1) * size) + col + 1].y;
-		float seNeighbor = vertices[((row - 1) * size) + col + 1].y;
-		float swNeighbor = vertices[((row - 1) * size) + col - 1].y;
+		float nwNeighbor = vertices[((row + 1) * Size) + col - 1].y;
+		float neNeighbor = vertices[((row + 1) * Size) + col + 1].y;
+		float seNeighbor = vertices[((row - 1) * Size) + col + 1].y;
+		float swNeighbor = vertices[((row - 1) * Size) + col - 1].y;
 
 		//Average them
 		float average = (nwNeighbor + neNeighbor + seNeighbor + swNeighbor) / 4;
@@ -611,7 +656,7 @@ public class FractalTerrain : MonoBehaviour {
 	size > 1
 
 	*/
-	float calculateCardinalValue(int row, int col, int max) {
+	float CalculateCardinalValue(int row, int col, int max) {
 		float nNeighbor;
 		float sNeighbor;
 		float eNeighbor;
@@ -628,25 +673,25 @@ public class FractalTerrain : MonoBehaviour {
 			values--;
 			nNeighbor = 0;
 		}
-		else nNeighbor = vertices[((row + 1) * size) + col].y;
+		else nNeighbor = vertices[((row + 1) * Size) + col].y;
 
 		if (row - 1 < 0) {
 			values--;
 			sNeighbor = 0;
 		}
-		else sNeighbor = vertices[((row - 1) * size) + col].y;
+		else sNeighbor = vertices[((row - 1) * Size) + col].y;
 
 		if (col + 1 >= max) {
 			values--;
 			eNeighbor = 0;
 		}
-		else eNeighbor = vertices[((row * size)) + col + 1].y;
+		else eNeighbor = vertices[((row * Size)) + col + 1].y;
 
 		if (col - 1 < 0) {
 			values--;
 			wNeighbor = 0;
 		}
-		else wNeighbor = vertices[(row * size) + col - 1].y;
+		else wNeighbor = vertices[(row * Size) + col - 1].y;
 
 
 		//Finds the average
@@ -672,94 +717,5 @@ public class FractalTerrain : MonoBehaviour {
 		float deviation = maxDeviation * randomizationFactor;
 
 		return average + UnityEngine.Random.Range(-deviation, deviation);
-	}
-
-	/*
-	Desc: Prints out the various arrays for debugging
-	DO NOT USE WITH MORE THAN 64 x 64
-
-	parameters:
-
-	Returns:
-
-	*/
-	void debug() {
-		Debug.Log("Begin Debug Vertices");
-		printVertices();
-		Debug.Log("Begin Debug UVs");
-		printUVs();
-		Debug.Log("Begin Debug Tris");
-		printTris();
-	}
-
-
-	/*
-	Desc: Prints our the vertex array
-
-	parameters:
-
-
-	Returns:
-
-	*/
-	void printVertices() {
-		string line;
-		for (int row = 0; row < size; row++) {
-			line = "";
-			for (int col = 0; col < size; col++) {
-				line += "[" + ((row * size) + col) + "]" + vertices[(row * size) + col] + ", ";
-			}
-			Debug.Log(line);
-		}
-	}
-
-
-	/*
-	Desc: Prints out the UV array
-
-	parameters:
-
-
-	Returns:
-
-	*/
-	void printUVs() {
-		string line;
-		for (int row = 0; row < size; row++) {
-			line = "";
-			for (int col = 0; col < size; col++) {
-				line += uvs[(row * size) + col] + ", ";
-			}
-			Debug.Log(line);
-		}
-	}
-
-
-	/*
-	Desc: Prints out the triangles array
-
-	parameters:
-
-
-	Returns:
-
-	*/
-	void printTris() {
-		string line;
-		for (int row = 0; row < size - 1; row++) {
-			line = "";
-			for (int col = 0; col < size - 1; col++) {
-				line += "(";
-				for (int i = 0; i < 3; i++) {
-					line += triangles[(row * (size - 1) * 6) + (col * 6) + i] + ", ";
-				}
-				line += ")(";
-				for (int i = 3; i < 6; i++) {
-					line += triangles[(row * (size - 1) * 6) + (col * 6) + i] + ", ";
-				}
-				line += "), ";
-			}
-			Debug.Log(line);
-		}
 	}
 }

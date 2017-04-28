@@ -26,14 +26,12 @@ public class PlaneController : MonoBehaviour {
 	void Start() {
 		physics = transform.GetComponent<Rigidbody>();
 
-		if (terrain == null) Debug.Log("impossible");
-
 		//Look down at the so the player can get their barings
-		transform.position = new Vector3(0, terrain.maxPositiveHeight * 1.5f, 0);
+		transform.position = new Vector3(0, terrain.MaxPositiveHeight * 1.5f, 0);
 		transform.rotation = Quaternion.Euler(90, 0, 0);
 
 		//Set our max speed based on how large the terrain is
-		maxSpeed = terrain.size * speedToSizeRatio;
+		maxSpeed = terrain.Size * speedToSizeRatio;
 
 		//Initialize our velocity
 		physics.velocity = maxSpeed * transform.forward;
@@ -75,7 +73,7 @@ public class PlaneController : MonoBehaviour {
 	*/
 	void Reset() {
 		transform.rotation = Quaternion.Euler(90, 0, 0);
-		transform.position = new Vector3(0, terrain.maxPositiveHeight * 1.5f, 0);
+		transform.position = new Vector3(0, terrain.MaxPositiveHeight * 1.5f, 0);
 		physics.velocity = maxSpeed * transform.forward;
 	}
 

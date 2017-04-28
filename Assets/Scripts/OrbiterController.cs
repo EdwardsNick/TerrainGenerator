@@ -21,8 +21,8 @@ public class OrbiterController : MonoBehaviour {
 	void Start() {
 
 		//set these values based on the terrain size
-		radius = terrain.size / 4f;
-		height = terrain.maxPositiveHeight * 1.5f;
+		radius = terrain.Size / 4f;
+		height = terrain.MaxPositiveHeight * 1.5f;
 	}
 
 	// Update is called once per frame

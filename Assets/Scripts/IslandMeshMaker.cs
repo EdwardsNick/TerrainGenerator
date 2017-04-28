@@ -59,7 +59,7 @@ public class IslandMeshMaker : MonoBehaviour {
 		terrain.startingMesh = island;
 		terrain.fractalExpansions = 4;
 		terrain.vertexDistance = 1;
-		terrain.buildMesh();
+		terrain.BuildMesh();
 	}
 	
 	// Update is called once per frame
