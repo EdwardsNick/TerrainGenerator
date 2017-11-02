@@ -37,13 +37,13 @@ public class FractalTerrain : MonoBehaviour {
 	//Controls the number of fractal expansions done on subMeshSize
 	[Range(0, 10)]
 	[Header("Quadrouples # of Vertices")]
-	public int fractalExpansions = 4;
+	public int fractalExpansions;
 
 	//The distance between individual vertices in the overall mesh.
 	//Increasing this will have an effect of stretching the mesh out
 	[Range(1, 100)]
 	[Header("Distance between Vertices")]
-	public int vertexDistance = 1;
+	public int vertexDistance;
 
 	//Controls how much of a random factor is used to determine the fractal
 	//expansions

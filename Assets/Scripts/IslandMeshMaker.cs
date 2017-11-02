@@ -57,8 +57,6 @@ public class IslandMeshMaker : MonoBehaviour {
 		island.triangles = triangles;
 
 		terrain.startingMesh = island;
-		terrain.fractalExpansions = 4;
-		terrain.vertexDistance = 1;
 		terrain.BuildMesh();
 	}
 	
